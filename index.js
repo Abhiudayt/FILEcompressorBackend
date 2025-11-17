@@ -31,7 +31,7 @@ const upload = multer({ storage });
 
 // Health check
 app.get("/alive", (req, res) => {
-    res.send("server-alive");
+    res.send("server-aliv");
 });
 
 // Static download URLs

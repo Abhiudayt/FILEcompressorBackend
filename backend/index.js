@@ -4,21 +4,22 @@ import sharp from "sharp";
 import JSZip from "jszip";
 import { v4 as uuidv4 } from "uuid";
 import cors from "cors";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
 app.use(cors());
 app.use(express.json());
 
+// Directories
 const UPLOAD_DIR = "./uploads";
 const OUTPUT_DIR = "./outputs";
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 
-// Multer storage
 const storage = multer.diskStorage({
     destination: UPLOAD_DIR,
     filename: (_, file, cb) => {
@@ -28,25 +29,24 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+// Health check
 app.get("/alive", (req, res) => {
-    res.send("hello");
-})
-// Serve static download URLs
+    res.send("server-alive");
+});
+
+// Static download URLs
 app.use("/files", express.static(path.join(process.cwd(), OUTPUT_DIR)));
 
-// Detect if single/bulk in same route
 app.post("/compress", upload.array("files"), async (req, res) => {
     try {
         const files = req.files;
-
         if (!files || files.length === 0) {
             return res.status(400).json({ error: "No files uploaded" });
         }
 
-        // If single file
+        // SINGLE FILE
         if (files.length === 1) {
             const file = files[0];
-
             const newName = uuidv4() + ".webp";
             const outputPath = `${OUTPUT_DIR}/${newName}`;
 
@@ -55,7 +55,6 @@ app.post("/compress", upload.array("files"), async (req, res) => {
                 .webp({ quality: 75 })
                 .toFile(outputPath);
 
-            // Cleanup original upload
             fs.unlinkSync(file.path);
 
             return res.json({
@@ -64,7 +63,7 @@ app.post("/compress", upload.array("files"), async (req, res) => {
             });
         }
 
-        // If bulk → create ZIP
+        // BULK → ZIP
         const zip = new JSZip();
 
         for (const file of files) {
@@ -75,10 +74,10 @@ app.post("/compress", upload.array("files"), async (req, res) => {
                     .toBuffer();
 
                 zip.file(file.originalname.replace(/\.\w+$/, ".webp"), buffer);
+                fs.unlinkSync(file.path);
 
-                fs.unlinkSync(file.path); // Cleanup
             } catch (err) {
-                console.log("Error compressing:", file.originalname, err);
+                console.error("Error on:", file.originalname, err);
             }
         }
 
@@ -93,6 +92,7 @@ app.post("/compress", upload.array("files"), async (req, res) => {
             type: "bulk",
             url: `${req.protocol}://${req.get("host")}/files/${zipName}`,
         });
+
     } catch (err) {
         console.error("Compression error:", err);
         res.status(500).json({ error: "Server error" });
@@ -100,5 +100,5 @@ app.post("/compress", upload.array("files"), async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 Compressor server running on http://localhost:${PORT}`);
-})
+    console.log(`🚀 Backend running on port ${PORT}`);
+});
